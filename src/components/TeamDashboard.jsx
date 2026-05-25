@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { MAX_TEAM_SPEND, getSpendRemaining, getTeamSpent } from '../utils/constants'
 
 export default function TeamDashboard({ teams }) {
   const [expandedTeams, setExpandedTeams] = useState({})
@@ -40,8 +41,15 @@ export default function TeamDashboard({ teams }) {
                         <div className="text-lg font-bold text-neon-green">{team.playersBought.length}</div>
                       </div>
                       <div className="bg-dark-700/50 p-3 rounded col-span-2">
-                        <div className="text-xs text-gray-400 mb-1">Total Spent</div>
-                        <div className="text-lg font-bold text-neon-blue">{team.totalSpent.toLocaleString()}</div>
+                        <div className="text-xs text-gray-400 mb-1">
+                          Total Spent (max {MAX_TEAM_SPEND.toLocaleString()})
+                        </div>
+                        <div className="text-lg font-bold text-neon-blue">
+                          {getTeamSpent(team).toLocaleString()} / {MAX_TEAM_SPEND.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {getSpendRemaining(team).toLocaleString()} remaining to spend
+                        </div>
                       </div>
                     </div>
                   </div>

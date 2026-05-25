@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Trophy, Plus, Minus } from 'lucide-react'
+import { MAX_TEAM_SPEND } from '../utils/constants'
 
 const DEFAULT_TEAMS = [
   'Al Hilal',
@@ -9,7 +10,7 @@ const DEFAULT_TEAMS = [
   'Banglore Bulls',
 ]
 
-const DEFAULT_POINTS = 1500
+const DEFAULT_POINTS = 15000
 
 export default function TeamSetup({ onSetupComplete }) {
   const [teamsCount, setTeamsCount] = useState(5)
@@ -134,6 +135,7 @@ export default function TeamSetup({ onSetupComplete }) {
         {/* Info */}
         <div className="glow-card bg-dark-700/30 p-6 text-center text-sm text-gray-300">
           <p>✨ Set up your teams and initial bidding points to begin the auction</p>
+          <p className="mt-2 text-gold">Each team may spend up to {MAX_TEAM_SPEND.toLocaleString()} total on players</p>
         </div>
       </div>
     </div>

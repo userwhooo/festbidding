@@ -6,6 +6,7 @@ import AuctionHistory from './AuctionHistory'
 import Leaderboard from './Leaderboard'
 import ExportData from './ExportData'
 import { STORAGE_KEYS, loadJSON, saveJSON } from '../utils/storage'
+import { canTeamBuyAtPrice, getSpendLimitMessage } from '../utils/constants'
 
 export default function AuctionManager({ teams, setTeams, transactions, setTransactions, players, setPlayers, onReset }) {
   const [activeTab, setActiveTab] = useState(() => loadJSON(STORAGE_KEYS.activeTab, 'auction'))
@@ -17,6 +18,12 @@ export default function AuctionManager({ teams, setTeams, transactions, setTrans
   }, [activeTab])
 
   const handlePlayerSold = (playerName, soldPrice, soldToTeam) => {
+    const freshTeam = teams.find((t) => t.id === soldToTeam.id) || soldToTeam
+    if (!canTeamBuyAtPrice(freshTeam, soldPrice)) {
+      alert(getSpendLimitMessage(freshTeam, soldPrice))
+      return false
+    }
+
     const transaction = {
       id: Math.random().toString(36).substr(2, 9),
       playerName,
@@ -46,6 +53,7 @@ export default function AuctionManager({ teams, setTeams, transactions, setTrans
 
     // Play sound
     playAuctionSound('sold')
+    return true
   }
 
   const handlePlayerUnsold = (playerName) => {
