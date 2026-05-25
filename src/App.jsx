@@ -44,8 +44,7 @@ export default function App() {
       basePrice: '',
       currentBid: 0,
       currentBidderId: null,
-      timerActive: false,
-      timeLeft: 60,
+      auctionActive: false,
     })
   }
 

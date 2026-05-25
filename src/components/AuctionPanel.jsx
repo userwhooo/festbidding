@@ -14,8 +14,7 @@ const EMPTY_SESSION = {
   basePrice: '',
   currentBid: 0,
   currentBidderId: null,
-  timerActive: false,
-  timeLeft: 60,
+  auctionActive: false,
 }
 
 function loadLiveSession(teams) {
@@ -31,71 +30,57 @@ function loadLiveSession(teams) {
     basePrice: saved.basePrice || '',
     currentBid: saved.currentBid || 0,
     currentBidder,
-    timerActive: Boolean(saved.timerActive),
-    timeLeft: typeof saved.timeLeft === 'number' ? saved.timeLeft : 60,
+    auctionActive: Boolean(saved.auctionActive),
   }
 }
 
 export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
-  const [playerName, setPlayerName] = useState(() => {
-    const s = loadLiveSession(teams)
-    return s.playerName
-  })
-  const [basePrice, setBasePrice] = useState(() => loadLiveSession(teams).basePrice)
-  const [currentBid, setCurrentBid] = useState(() => loadLiveSession(teams).currentBid)
-  const [currentBidder, setCurrentBidder] = useState(() => loadLiveSession(teams).currentBidder)
-  const [soldToTeam, setSoldToTeam] = useState(() => loadLiveSession(teams).currentBidder)
-  const [timerActive, setTimerActive] = useState(() => loadLiveSession(teams).timerActive)
-  const [timeLeft, setTimeLeft] = useState(() => loadLiveSession(teams).timeLeft)
+  const initial = loadLiveSession(teams)
+  const [playerName, setPlayerName] = useState(initial.playerName)
+  const [basePrice, setBasePrice] = useState(initial.basePrice)
+  const [currentBid, setCurrentBid] = useState(initial.currentBid)
+  const [currentBidder, setCurrentBidder] = useState(initial.currentBidder)
+  const [auctionActive, setAuctionActive] = useState(initial.auctionActive)
   const [showSoldAnimation, setShowSoldAnimation] = useState(false)
 
-  // Re-link bidder after refresh once teams are available
   useEffect(() => {
     if (currentBidder) return
     const saved = loadJSON(STORAGE_KEYS.liveAuction, null)
     if (!saved?.currentBidderId) return
     const team = teams.find((t) => t.id === saved.currentBidderId)
-    if (team) {
-      setCurrentBidder(team)
-      setSoldToTeam(team)
-    }
+    if (team) setCurrentBidder(team)
   }, [teams, currentBidder])
 
-  // Clear bidder if current bid exceeds team spending limit
   useEffect(() => {
     if (!currentBidder) return
     const team = teams.find((t) => t.id === currentBidder.id) || currentBidder
     if (!canTeamBuyAtPrice(team, currentBid)) {
       setCurrentBidder(null)
-      setSoldToTeam(null)
     }
   }, [currentBid, teams, currentBidder])
 
-  // Persist in-progress auction so refresh does not lose current player
   useEffect(() => {
     saveJSON(STORAGE_KEYS.liveAuction, {
       playerName,
       basePrice,
       currentBid,
       currentBidderId: currentBidder?.id || null,
-      timerActive,
-      timeLeft,
+      auctionActive,
     })
-  }, [playerName, basePrice, currentBid, currentBidder, timerActive, timeLeft])
+  }, [playerName, basePrice, currentBid, currentBidder, auctionActive])
 
-  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e) => {
-      // Don't trigger shortcuts when typing in input/textarea
       const isInputElement = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA'
-      
-      if (e.code === 'Space' && !isInputElement) {
+      if (!auctionActive || isInputElement) return
+
+      if (e.code === 'Space') {
         e.preventDefault()
         increaseBid(50)
-      } else if (e.code === 'Backspace' && !isInputElement) {
+      } else if (e.code === 'Backspace') {
         e.preventDefault()
         decreaseBid(50)
-      } else if (e.code === 'Enter' && !isInputElement) {
+      } else if (e.code === 'Enter') {
         e.preventDefault()
         handleSold()
       }
@@ -103,18 +88,7 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
 
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [currentBid, soldToTeam, playerName])
-
-  // Timer logic
-  useEffect(() => {
-    if (!timerActive || timeLeft <= 0) return
-
-    const interval = setInterval(() => {
-      setTimeLeft(prev => Math.max(0, prev - 1))
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [timerActive, timeLeft])
+  }, [auctionActive, currentBid, currentBidder, playerName])
 
   const startAuction = () => {
     if (!playerName.trim() || !basePrice) {
@@ -123,34 +97,31 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
     }
     setCurrentBid(parseInt(basePrice))
     setCurrentBidder(null)
-    setSoldToTeam(null)
-    setTimeLeft(60)
-    setTimerActive(true)
+    setAuctionActive(true)
   }
 
   const increaseBid = (amount) => {
-    if (!timerActive || timeLeft <= 0) return
-    setCurrentBid(prev => prev + amount)
+    if (!auctionActive) return
+    setCurrentBid((prev) => prev + amount)
   }
 
   const decreaseBid = (amount) => {
-    if (!timerActive || timeLeft <= 0) return
-    setCurrentBid(prev => Math.max(parseInt(basePrice), prev - amount))
+    if (!auctionActive) return
+    setCurrentBid((prev) => Math.max(parseInt(basePrice) || 0, prev - amount))
   }
 
   const handleBidderSelect = (team) => {
-    if (!timerActive || timeLeft <= 0) return
+    if (!auctionActive) return
     if (!canTeamBuyAtPrice(team, currentBid)) {
       alert(getSpendLimitMessage(team, currentBid))
       return
     }
     setCurrentBidder(team)
-    setSoldToTeam(team)
   }
 
   const handleSold = () => {
-    if (!playerName.trim() || !currentBidder) {
-      alert('Please select a player and bidder')
+    if (!auctionActive || !playerName.trim() || !currentBidder) {
+      alert('Please start the auction, enter a player, and select a team')
       return
     }
     const team = teams.find((t) => t.id === currentBidder.id) || currentBidder
@@ -161,15 +132,13 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
     setShowSoldAnimation(true)
     setTimeout(() => {
       const sold = onPlayerSold(playerName, currentBid, team)
-      if (sold) {
-        resetAuction()
-      }
+      if (sold) resetAuction()
       setShowSoldAnimation(false)
     }, 600)
   }
 
   const soldDisabled =
-    !timerActive ||
+    !auctionActive ||
     !currentBidder ||
     !playerName ||
     !canTeamBuyAtPrice(
@@ -178,8 +147,8 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
     )
 
   const handleUnsold = () => {
-    if (!playerName.trim()) {
-      alert('Please enter a player name')
+    if (!auctionActive || !playerName.trim()) {
+      alert('Please start the auction and enter a player name')
       return
     }
     onPlayerUnsold(playerName)
@@ -191,13 +160,12 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
     setBasePrice('')
     setCurrentBid(0)
     setCurrentBidder(null)
-    setSoldToTeam(null)
-    setTimerActive(false)
-    setTimeLeft(60)
+    setAuctionActive(false)
     saveJSON(STORAGE_KEYS.liveAuction, EMPTY_SESSION)
   }
 
   const handleManualPriceEdit = (value) => {
+    if (!auctionActive) return
     const price = parseInt(value) || 0
     if (price >= parseInt(basePrice)) {
       setCurrentBid(price)
@@ -207,9 +175,7 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
   return (
     <div className="min-h-screen p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Main Auction Display */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Left Panel - Player Input */}
           <div className="lg:col-span-1 space-y-4">
             <div className="glow-card bg-dark-800/50 p-6">
               <h3 className="text-xl font-bold mb-4 text-neon-green">⚙️ Auction Setup</h3>
@@ -222,7 +188,7 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
                     value={playerName}
                     onChange={(e) => setPlayerName(e.target.value)}
                     placeholder="Enter player name"
-                    disabled={timerActive}
+                    disabled={auctionActive}
                     className="w-full bg-dark-700 border border-gold/30 rounded px-3 py-2 text-white disabled:opacity-50 focus:outline-none focus:border-neon-green"
                   />
                 </div>
@@ -234,14 +200,14 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
                     value={basePrice}
                     onChange={(e) => setBasePrice(e.target.value)}
                     placeholder="Enter base price"
-                    disabled={timerActive}
+                    disabled={auctionActive}
                     className="w-full bg-dark-700 border border-gold/30 rounded px-3 py-2 text-white disabled:opacity-50 focus:outline-none focus:border-neon-green"
                   />
                 </div>
 
                 <button
                   onClick={startAuction}
-                  disabled={timerActive}
+                  disabled={auctionActive || !playerName.trim() || !basePrice}
                   className="w-full bg-neon-green/30 hover:bg-neon-green/50 disabled:opacity-50 text-neon-green font-bold py-2 px-4 rounded transition-all duration-200"
                 >
                   🎯 Start Auction
@@ -250,32 +216,7 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
             </div>
           </div>
 
-          {/* Center Panel - Current Bid Display */}
           <div className="lg:col-span-1 flex flex-col gap-4">
-            {/* Timer */}
-            <div className={`glow-card bg-dark-800/50 p-6 text-center ${timeLeft <= 10 && timerActive ? 'border-red-500/50' : ''}`}>
-              <div className="text-sm text-gray-400 mb-2">TIMER</div>
-              <div className={`text-5xl font-bold ${timeLeft <= 10 && timerActive ? 'text-red-500 animate-pulse' : 'text-neon-green'}`}>
-                {String(timeLeft).padStart(2, '0')}s
-              </div>
-              <div className="flex gap-2 mt-4">
-                <button
-                  onClick={() => setTimerActive(!timerActive)}
-                  disabled={!timerActive && timeLeft === 60}
-                  className="flex-1 bg-blue-500/20 hover:bg-blue-500/30 disabled:opacity-50 text-blue-300 font-bold py-1 px-2 rounded text-sm transition-all duration-200"
-                >
-                  {timerActive ? '⏸' : '▶'}
-                </button>
-                <button
-                  onClick={() => setTimeLeft(60)}
-                  className="flex-1 bg-gray-500/20 hover:bg-gray-500/30 text-gray-300 font-bold py-1 px-2 rounded text-sm transition-all duration-200"
-                >
-                  ⟲ Reset
-                </button>
-              </div>
-            </div>
-
-            {/* Current Bid */}
             <div className={`glow-card bg-gradient-to-br from-gold/20 to-gold/5 p-8 text-center ${showSoldAnimation ? 'sold-animation' : ''}`}>
               <div className="text-sm text-gray-300 mb-2">CURRENT BID</div>
               <div className="text-6xl font-bold text-gold mb-2">
@@ -286,11 +227,10 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
                 value={currentBid}
                 onChange={(e) => handleManualPriceEdit(e.target.value)}
                 className="w-full bg-dark-700/50 border border-gold/30 rounded px-3 py-2 text-center text-white focus:outline-none focus:border-neon-green text-sm"
-                disabled={!timerActive}
+                disabled={!auctionActive}
               />
             </div>
 
-            {/* Current Bidder */}
             <div className="glow-card bg-dark-800/50 p-6 text-center">
               <div className="text-sm text-gray-400 mb-2">HIGHEST BIDDER</div>
               <div className={`text-2xl font-bold ${currentBidder ? 'text-neon-green' : 'text-gray-400'}`}>
@@ -299,7 +239,6 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
             </div>
           </div>
 
-          {/* Right Panel - Bid Controls */}
           <div className="lg:col-span-1">
             <div className="glow-card bg-dark-800/50 p-6">
               <h3 className="text-lg font-bold mb-4 text-neon-green">💰 Bid Controls</h3>
@@ -307,56 +246,56 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
               <div className="grid grid-cols-2 gap-2 mb-6">
                 <button
                   onClick={() => increaseBid(50)}
-                  disabled={!timerActive}
+                  disabled={!auctionActive}
                   className="bg-neon-green/20 hover:bg-neon-green/40 disabled:opacity-50 text-neon-green font-bold py-2 px-3 rounded transition-all duration-200 flex items-center justify-center gap-1"
                 >
                   <Plus className="w-4 h-4" /> +50
                 </button>
                 <button
                   onClick={() => increaseBid(100)}
-                  disabled={!timerActive}
+                  disabled={!auctionActive}
                   className="bg-neon-green/20 hover:bg-neon-green/40 disabled:opacity-50 text-neon-green font-bold py-2 px-3 rounded transition-all duration-200 flex items-center justify-center gap-1"
                 >
                   <Plus className="w-4 h-4" /> +100
                 </button>
                 <button
                   onClick={() => increaseBid(500)}
-                  disabled={!timerActive}
+                  disabled={!auctionActive}
                   className="bg-neon-green/20 hover:bg-neon-green/40 disabled:opacity-50 text-neon-green font-bold py-2 px-3 rounded transition-all duration-200 flex items-center justify-center gap-1"
                 >
                   <Plus className="w-4 h-4" /> +500
                 </button>
                 <button
                   onClick={() => increaseBid(1000)}
-                  disabled={!timerActive}
+                  disabled={!auctionActive}
                   className="bg-neon-green/20 hover:bg-neon-green/40 disabled:opacity-50 text-neon-green font-bold py-2 px-3 rounded transition-all duration-200 flex items-center justify-center gap-1"
                 >
                   <Plus className="w-4 h-4" /> +1K
                 </button>
                 <button
                   onClick={() => decreaseBid(50)}
-                  disabled={!timerActive}
+                  disabled={!auctionActive}
                   className="bg-red-500/20 hover:bg-red-500/40 disabled:opacity-50 text-red-400 font-bold py-2 px-3 rounded transition-all duration-200 flex items-center justify-center gap-1"
                 >
                   <Minus className="w-4 h-4" /> -50
                 </button>
                 <button
                   onClick={() => decreaseBid(100)}
-                  disabled={!timerActive}
+                  disabled={!auctionActive}
                   className="bg-red-500/20 hover:bg-red-500/40 disabled:opacity-50 text-red-400 font-bold py-2 px-3 rounded transition-all duration-200 flex items-center justify-center gap-1"
                 >
                   <Minus className="w-4 h-4" /> -100
                 </button>
                 <button
                   onClick={() => decreaseBid(500)}
-                  disabled={!timerActive}
+                  disabled={!auctionActive}
                   className="bg-red-500/20 hover:bg-red-500/40 disabled:opacity-50 text-red-400 font-bold py-2 px-3 rounded transition-all duration-200 flex items-center justify-center gap-1"
                 >
                   <Minus className="w-4 h-4" /> -500
                 </button>
                 <button
                   onClick={() => decreaseBid(1000)}
-                  disabled={!timerActive}
+                  disabled={!auctionActive}
                   className="bg-red-500/20 hover:bg-red-500/40 disabled:opacity-50 text-red-400 font-bold py-2 px-3 rounded transition-all duration-200 flex items-center justify-center gap-1"
                 >
                   <Minus className="w-4 h-4" /> -1K
@@ -366,45 +305,44 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
           </div>
         </div>
 
-        {/* Team Selection for Sold */}
-        {timerActive && (
+        {auctionActive && (
           <div className="glow-card bg-dark-800/50 p-6 mb-8">
             <h3 className="text-lg font-bold mb-2 text-neon-green">👥 Select Team</h3>
             <p className="text-xs text-gray-400 mb-4">
               Spending limit: {MAX_TEAM_SPEND.toLocaleString()} per team (total purchases)
             </p>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-              {teams.map(team => {
+              {teams.map((team) => {
                 const canBuy = canTeamBuyAtPrice(team, currentBid)
                 const atLimit = getSpendRemaining(team) === 0
                 return (
-                <button
-                  key={team.id}
-                  onClick={() => handleBidderSelect(team)}
-                  disabled={!canBuy}
-                  className={`glow-card p-4 text-center transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
-                    currentBidder?.id === team.id
-                      ? 'border-neon-green/80 bg-neon-green/20'
-                      : atLimit
-                        ? 'border-red-500/40'
-                        : 'border-gold/20 hover:border-gold/50'
-                  }`}
-                >
-                  <div className="text-3xl mb-2">{team.icon}</div>
-                  <div className="font-bold text-sm mb-1">{team.name}</div>
-                  <div className="text-xs text-gray-400">
-                    Spent {getTeamSpent(team).toLocaleString()} / {MAX_TEAM_SPEND.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-gold mt-1">
-                    {getSpendRemaining(team).toLocaleString()} left
-                  </div>
-                </button>
-              )})}
+                  <button
+                    key={team.id}
+                    onClick={() => handleBidderSelect(team)}
+                    disabled={!canBuy}
+                    className={`glow-card p-4 text-center transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
+                      currentBidder?.id === team.id
+                        ? 'border-neon-green/80 bg-neon-green/20'
+                        : atLimit
+                          ? 'border-red-500/40'
+                          : 'border-gold/20 hover:border-gold/50'
+                    }`}
+                  >
+                    <div className="text-3xl mb-2">{team.icon}</div>
+                    <div className="font-bold text-sm mb-1">{team.name}</div>
+                    <div className="text-xs text-gray-400">
+                      Spent {getTeamSpent(team).toLocaleString()} / {MAX_TEAM_SPEND.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gold mt-1">
+                      {getSpendRemaining(team).toLocaleString()} left
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
 
-        {/* Action Buttons */}
         <div className="flex flex-col md:flex-row gap-4">
           <button
             onClick={handleSold}
@@ -415,7 +353,7 @@ export default function AuctionPanel({ teams, onPlayerSold, onPlayerUnsold }) {
           </button>
           <button
             onClick={handleUnsold}
-            disabled={!timerActive || !playerName}
+            disabled={!auctionActive || !playerName}
             className="flex-1 bg-yellow-500/20 hover:bg-yellow-500/40 disabled:opacity-50 text-yellow-400 font-bold py-4 px-6 rounded-lg text-lg transition-all duration-200"
           >
             ❌ UNSOLD
